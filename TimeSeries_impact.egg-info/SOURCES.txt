@@ -1,0 +1,12 @@
+setup.py
+TimeSeries_impact/__init__.py
+TimeSeries_impact/impact.py
+TimeSeries_impact/plot_functions.py
+TimeSeries_impact/ts_analysis.py
+TimeSeries_impact/utilities.py
+TimeSeries_impact.egg-info/PKG-INFO
+TimeSeries_impact.egg-info/SOURCES.txt
+TimeSeries_impact.egg-info/dependency_links.txt
+TimeSeries_impact.egg-info/not-zip-safe
+TimeSeries_impact.egg-info/requires.txt
+TimeSeries_impact.egg-info/top_level.txt

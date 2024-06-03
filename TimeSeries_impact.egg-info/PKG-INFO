@@ -1,0 +1,14 @@
+Metadata-Version: 2.1
+Name: TimeSeries_impact
+Version: 0.1
+Summary: Set of functions for advanced time series analysis and causal impact simulations
+Home-page: 
+Author: Milaim Kas
+Author-email: milaim.kas@gmail.com
+License: MIT
+Requires-Dist: numpy
+Requires-Dist: matplotlib
+Requires-Dist: statsmodels
+Requires-Dist: pandas
+Requires-Dist: pymc
+Requires-Dist: scipy
