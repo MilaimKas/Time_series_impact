@@ -5,7 +5,6 @@ Contains the construct_model and model_fit functions that are called in analysis
 
 import numpy as np
 import pandas as pd
-import pymc as pm
 import pytensor.tensor as at
 from pytensor.graph.op import Op
 
@@ -198,34 +197,4 @@ def model_fit(model, estimation, model_args):
         model_results = ModelResults(model, trained_model, estimation)
         return model_results
     elif estimation == "pymc":
-        loglike = Loglike(model)
-        with pm.Model():
-            # Priors
-            sigma2irregular = pm.InverseGamma("sigma2.irregular", 1, 1)
-            sigma2level = pm.InverseGamma("sigma2.level", 1, 1)
-            if model.exog is None:
-                # convert variables to tensor vectors
-                theta = at.as_tensor_variable([sigma2irregular, sigma2level])
-            else:
-                # prior for regressors
-                betax1 = pm.Laplace("beta.x1", mu=0, b=1.0 / 0.7)
-                # convert variables to tensor vectors
-                theta = at.as_tensor_variable([sigma2irregular, sigma2level, betax1])
-            # use a DensityDist (use a lambda function to "call" the Op)
-            pm.Potential("likelihood", loglike(theta))
-
-            # Draw samples
-            trace = pm.sample(
-                model_args["ndraws"],
-                tune=model_args["nburn"],
-                return_inferencedata=True,
-                cores=4,
-                compute_convergence_checks=False,
-            )
-        # Retrieve the posterior means
-        params = pm.summary(trace)["mean"].values
-
-        # Construct results using these posterior means as parameter values
-        results = model.smooth(params)
-        model_results = ModelResults(model, results, estimation)
-        return model_results
+        raise NotImplementedError("PYMC model deprecated")

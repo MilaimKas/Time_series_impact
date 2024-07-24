@@ -10,5 +10,6 @@ Requires-Dist: numpy
 Requires-Dist: matplotlib
 Requires-Dist: statsmodels
 Requires-Dist: pandas
-Requires-Dist: pymc
 Requires-Dist: scipy
+Requires-Dist: tdqm
+Requires-Dist: tfcausalimpact

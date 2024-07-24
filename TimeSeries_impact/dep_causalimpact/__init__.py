@@ -5,4 +5,4 @@ models. It's a port of the R package CausalImpact,
 see https://github.com/google/CausalImpact
 
 """
-import TimeSeries_impact.causalimpact as causalimpact 
+import TimeSeries_impact.dep_causalimpact as causalimpact 

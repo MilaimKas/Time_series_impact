@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import TimeSeries_impact.utilities as utilities
 from statsmodels.tsa.seasonal import seasonal_decompose, STL
-import matplotlib.pypplot as plt
+import matplotlib.pyplot as plt
 from causalimpact import CausalImpact
 
 
@@ -41,6 +41,64 @@ def plot_cum_effect(self, ci, test_size, kpi="registrations"):
     
     return fig
 
+def scaled_view(df, group_columns, metric="regs", datestamp="date"):
+    """
+    Generate a plot with lines corresponding to scaled and shifted grouped metric 
+
+    Args:
+        df (pd.DataFrame): dataframe with group_columns, datestamp and metric as columns.
+        group_columns (list): list of strings where each string is the name of the columns to group.
+        metric (str): name of the metric column.
+        datestamp (str, optional): name of the date stamp column. Defaults to "date".
+
+    Raises:
+        ValueError: too many group variables
+    """
+
+    if group_columns:
+
+        if len(group_columns) > 2:
+            raise ValueError("Only 2 group variable supported")
+
+        if any(element not in df.columns for element in group_columns+[metric]+[datestamp]):
+            raise ValueError("wrong column with respect to given group_columns, metric and datestamp")
+
+        tmp = df.copy()
+
+        normalized = metric+" normalized"
+        shifted = metric+" shifted"
+
+        # normalize data
+        tmp[normalized] = tmp.groupby(group_columns)[metric].transform(lambda x: (x - x.min()) / (x.max() - x.min()))
+
+        # perform summation
+        group_tot = [datestamp]+group_columns
+        tmp = tmp.groupby(group_tot)[normalized].sum().reset_index()
+
+        # add offset for better visualization
+        group_indices = {group: i for i, group in enumerate(tmp.groupby(group_columns).groups.keys())}
+        if len(group_columns) == 2:
+            tmp[shifted] = tmp.apply(lambda row: row[normalized] + group_indices[(row[group_columns[0]], row[group_columns[1]])], axis=1)
+            #plot
+            sns.lineplot(data=tmp, x=datestamp, y=shifted, hue=group_columns[0], style=group_columns[1], errorbar=None)
+            plt.show()
+        else:
+            tmp[shifted] = tmp.apply(lambda row: row[normalized] + group_indices[(row[group_columns[0]])], axis=1)
+            #plot
+            sns.lineplot(data=tmp, x=datestamp, y=shifted, hue=group_columns[0], errorbar=None)
+            plt.show()
+    
+    else:
+
+        # normalize data
+        tmp = df.apply(lambda x: (x - x.min()) / (x.max() - x.min()))
+
+        # add offset for better visualization
+        for i, col in enumerate(tmp.columns):
+            tmp[col] = tmp[col] + i 
+        #plot
+        tmp.plot()
+        plt.show()
 
 def plot_rel_effect(self, ci, test_size, kpi="registrations"):
     """

@@ -1,10 +1,15 @@
 import numpy as np
 import pandas as pd
-from statsmodels.tsa.seasonal import seasonal_decompose, STL
 import matplotlib.pyplot as plt
-from TimeSeries_impact.causalimpact.analysis import CausalImpact
+
+from TimeSeries_impact.dep_causalimpact.analysis import CausalImpact as dep_CausalImpact
 import TimeSeries_impact.utilities as utilities
+
+from causalimpact import CausalImpact
+
 from tqdm import trange
+
+# wrapper around the "good" BST causalimpact package
 
 
 class SimImpact:
@@ -13,7 +18,7 @@ class SimImpact:
         Class for performing some simulation (aka power analysis) on time series
     """
 
-    def __init__(self, target, controls):
+    def __init__(self, df):
         """
 
         Args:
@@ -21,22 +26,24 @@ class SimImpact:
             controls (pd.Series): pandas serie/dataframe for the controls with date index
         """
 
-        self.target = target
-        self.controls = controls
+        self.target = df.iloc[:,0]
+        self.controls = df.iloc[:,1:]
 
         # remove nan
         self.target.dropna(inplace=True)
         self.controls.dropna(inplace=True)
 
         # initialize list of results
-        self.res_sim = []
-        self.res_power = []
+        self.res_sim = {}
+        self.res_power = {}
 
         self.test_size = None
+        self.relup = None
 
     def make_sim(self, relup_list, test_size, 
                         model_args={"nseasons":7}, 
-                        add_effect_args={"scale_std":0.01, "log_len":2}):
+                        add_effect_args={"scale_std":0.05, "log_len":0},
+                        on_trend=False, **kwargs):
         """
         This function performs a simulation following these steps:
             - choose a test size (post perdiod size)
@@ -60,28 +67,35 @@ class SimImpact:
         uplift_list = np.array([np.mean(self.target[-test_size:])*ru for ru in relup_list])
 
         # initialize list of results
+        if self.res_sim:
+            print("Warning: result of simulation overwritten")
         self.res_sim = {}
 
         # loop over uplifts
         for up, rel in zip(uplift_list, relup_list):
-
+            
             # add uplift with randomness to target data
             obs = utilities.add_effect(self.target, up, test_size, **add_effect_args)
-            
-            # Causal impact analysis
             data = pd.concat([obs, self.controls], axis=1) # merge obs and controls
             data.index = pd.to_datetime(data.index)
+            
+            # decompose TS
+            if on_trend:
+                data, _, _ = utilities.decompose_components(data, **kwargs)
+                model_args["nseasons"] = None # remove seasonal components from model
+
+            # Causal impact analysis
             pre_period = [data.index[0], data.index[-1-test_size]]
             post_period = [data.index[-test_size], data.index[-1]]
-            ci = CausalImpact(data, pre_period, post_period, model_args=model_args)
+            ci = dep_CausalImpact(data, pre_period, post_period, model_args=model_args)
             ci.run()
             ci.summary()
 
             # store formated results for given uplift
-            self.res_sim.update({rel:[utilities.store_ci(ci), ci]})
+            self.res_sim.update({"{:.4f}".format(rel):[utilities.store_ci(ci), ci]})
         
-        # return result plot
-        return self.plot_sim_rel()
+        self.relup = relup_list
+
     
     def plot_sim_rel(self, res_sim=None):
         """
@@ -98,7 +112,7 @@ class SimImpact:
             res_sim = self.res_sim
         
         # extract results from res_sim class
-        relup = np.array(list(res_sim.keys()))
+        relup = self.relup
         rel = np.array([r[0].rel for r in res_sim.values()])
         rel_ci_l = np.array([r[0].rel_l for r in res_sim.values()])
         rel_ci_u = np.array([r[0].rel_u for r in res_sim.values()])
@@ -123,14 +137,14 @@ class SimImpact:
 
         return fig
     
-    def plot_sim_cum(self, test_size=None, res_sim=None, kpi="registrations"):
+    def plot_sim_cum(self, test_size=None, res_sim=None, kpi="regs"):
         """
         Plot the cummulative impact for all effect size
 
         Args:
             test_size (int): _description_
             res_sim (_type_, optional): _description_. Defaults to None.
-            kpi (str, optional): _description_. Defaults to "registrations".
+            kpi (str): plot xlabel
 
         Returns:
             plt.figure: y axis with cummulative effect, x axis with time unit
@@ -146,7 +160,7 @@ class SimImpact:
             res_sim = self.res_sim
 
         # extract results from res_sim class
-        relup = list(res_sim.keys())
+        relup = self.relup
         cum_effect = [r[0].cum for r in res_sim.values()]
         cum_effect_l = [r[0].cum_l for r in res_sim.values()]
         cum_effect_u = [r[0].cum_u for r in res_sim.values()]
@@ -174,8 +188,11 @@ class SimImpact:
         return fig
 
 
-    def power_analyse(self, relup_list=None, post_per_length_max=30, min_training_len=2, N_training=5, 
-                    model_args={"nseasons":7}, add_effect_args={"scale_std":0.01, "log_len":1}):
+    def power_analyse(self, relup_list=None, 
+                    post_per_length_max=30, post_per_length_min=4, min_training_len=None, N_training=5, 
+                    model_args={"nseasons":7}, 
+                    add_effect_args={"scale_std":0.05, "log_len":0},
+                    on_trend=False, **decompose_kwargs):
         """
         This function performs more involved simulation to "mimic" a standard power analysis within the time serie framework.
         Through the following steps:
@@ -187,7 +204,7 @@ class SimImpact:
         Args:
             relup_list (array_like, optional): list of relative uplift in fraction. Defaults to 0:0.2.
             post_per_length_max (int, optional): max test size in time unit. Defaults to 30.
-            min_training_len (int, optional): min test size in time unit. Defaults to 2.
+            min_training_len (int, optional): min training size in time unit. Defaults to 0.2*len(data).
             N_training (int, optional): number of different intervention dates. Defaults to 5.
             model_args (dict, optional): argument for the causal impact model. Defaults to {"nseasons":7}.
             add_effect_args (dict, optional): argument for the simulated effect. Defaults to {"scale_std":0.01, "log_len":2}.
@@ -199,18 +216,22 @@ class SimImpact:
             plt.figure: heatmap with contours
         """
 
+        if min_training_len is None:
+            min_training_len = int(0.2*len(self.target))
+        elif min_training_len < 7:
+            print("WARNING: minimum training length is smaller than 7. This is very small ...")
+
         if relup_list is None:
             # arr of relative (negative) uplifts in fraction
             relup_list = -np.linspace(0.01, 0.2, 20)
 
         # arr of intervention length
-        intervention_length = np.arange(10, post_per_length_max, 2)
+        intervention_length = np.arange(post_per_length_min, post_per_length_max, 2)
 
         # information for monte carlo simulation
         max_training_len = len(self.target)-max(intervention_length)
-        min_training_len = min_training_len # must be smaller than max_training_len
         if min_training_len >= max_training_len:
-            raise ValueError("Min training size is larger than max intervention length")
+            raise ValueError(f"Min training size of {min_training_len} is larger than max intervention length of {max_training_len}")
         # create space for variation in intervention date
         training_size_list = np.linspace(min_training_len, max_training_len, dtype=int, num=N_training)
 
@@ -237,7 +258,7 @@ class SimImpact:
             relup = relup_list[i]
             
             ci_obj_tmp = []
-            # loop over post period length ("sample size")
+            # loop over post period length (intervention_length)
             j = 0
             for post_period_len in intervention_length:
 
@@ -250,20 +271,26 @@ class SimImpact:
                 k = 0
                 for pre_period_len in training_size_list:
 
-                    control = self.controls[:pre_period_len+1+post_period_len]
+                    controls = self.controls[:pre_period_len+1+post_period_len]
+                    target = self.target[:pre_period_len+1+post_period_len]
 
                     # calculate absolute uplift from post period 
-                    up = relup*np.mean(self.target[pre_period_len+1:pre_period_len+1+post_period_len])
+                    up = relup*np.mean(target[pre_period_len+1:])
 
                     # add uplift with randomness to target
-                    obs = utilities.add_effect(self.target[:pre_period_len+1+post_period_len], up, post_period_len, **add_effect_args)
-
-                    data = pd.concat([obs, self.controls], axis=1) # merge controls and target
+                    obs = utilities.add_effect(target, up, post_period_len+1, **add_effect_args)
+                    data = pd.concat([obs, controls], axis=1) # merge controls and target
                     data.index = pd.to_datetime(data.index)
+
+                    # decompose TS
+                    if on_trend:
+                        data, _, _ = utilities.decompose_components(data, **decompose_kwargs)
+                        model_args["nseasons"] = None # remove seasonal components from model
+
                     pre_period = [data.index[0], data.index[pre_period_len]]
                     post_period = [data.index[pre_period_len+1], data.index[-1]]
 
-                    ci = CausalImpact(data, pre_period, post_period, model_args=model_args)
+                    ci = dep_CausalImpact(data, pre_period, post_period, model_args=model_args)
                     ci.run()
                     ci.summary()
                     res = utilities.store_ci(ci)
@@ -284,7 +311,7 @@ class SimImpact:
                 ci_width[i, j] = np.mean(ci_width_tmp)
                 roll_avg[i,j] = np.mean(roll_avg_tmp)
                 signi[i,j] = (roll_avg[i,j]+ci_width[i,j]/2 <= 0)
-                pval[i,j] = np.mean(pval_tmp) # does not make a lot of sense to take the mean of p_values ?
+                pval[i,j] = np.max(pval_tmp) # does not make a lot of sense to take the mean of p_values ?
 
                 ci_obj_tmp.append(ci)
 
@@ -293,6 +320,8 @@ class SimImpact:
             ci_obj.append(ci_obj_tmp)
         
         # store result in res_power class
+        if self.res_power:
+            print("Warning: result of power analysis overwritten")
         self.res_power = res_power(pval, ci_width, roll_avg, signi, relup_list, intervention_length, ci_obj)
 
         # return heatmap 
@@ -327,12 +356,15 @@ class SimImpact:
         im = plt.imshow(pval, interpolation="spline16")
         interp_data = im.get_array()
 
-        plt.colorbar()
-        plt.contour(interp_data, levels=alpha, colors="white")
+        plt.colorbar(label="p-value")
+        CS = plt.contour(interp_data, levels=alpha, colors="white")
         plt.yticks(ticks=np.arange(len(relup_list)), labels=["{:.0f} %".format(up*100) for up in relup_list], rotation=0)
         plt.xticks(ticks=np.arange(len(intervention_length))[::2], labels=intervention_length[::2])
         plt.ylabel("Relative uplift")
         plt.xlabel("Days after intervention")
+
+        # add countour labels
+        plt.clabel(CS, alpha, inline=1, fontsize=10)
 
         # dont dipsplay
         plt.close()

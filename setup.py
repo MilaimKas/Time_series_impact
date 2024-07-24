@@ -9,6 +9,6 @@ setup(name='TimeSeries_impact',
       license='MIT',
       packages=['TimeSeries_impact'],
       install_requires=[
-          'numpy', 'matplotlib', 'statsmodels', 'pandas', 'pymc', 'scipy', 'tdqm'
+          'numpy', 'matplotlib', 'statsmodels', 'pandas', 'scipy', 'tdqm', 'tfcausalimpact'
       ],
       zip_safe=False)
