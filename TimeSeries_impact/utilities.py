@@ -62,6 +62,10 @@ def normal_similarity_metrics(dist1, dist2):
 
     return res
 
+def seasonal_default(length):
+    smooth_default = 1+length//5 if (length//5)%2 == 0 else (length//5)
+    return max(smooth_default, 3)
+
 def decompose_components(df, **kwargs):
     """
     perform components decmposition on all columns of a dataframe
