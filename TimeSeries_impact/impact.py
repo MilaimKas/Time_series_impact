@@ -43,7 +43,7 @@ class SimImpact:
     def make_sim(self, relup_list, test_size, 
                         model_args={"nseasons":7}, 
                         add_effect_args={"scale_std":0.05, "log_len":0},
-                        on_trend=False, **kwargs):
+                        on_trend=False, decompose_kwars={"period":7, "seasonal":None, "trend":None}):
         """
         This function performs a simulation following these steps:
             - choose a test size (post perdiod size)
@@ -59,6 +59,9 @@ class SimImpact:
         Returns:
             plt.figure: main plot with the results
         """
+
+        if decompose_kwars["seasonal"] is None:
+            decompose_kwars["seasonal"] = utilities.seasonal_default(len(self.target))
 
         # store given test size in class value
         self.test_size = test_size
@@ -81,7 +84,7 @@ class SimImpact:
             
             # decompose TS
             if on_trend:
-                data, _, _ = utilities.decompose_components(data, **kwargs)
+                data, _, _ = utilities.decompose_components(data, **decompose_kwars)
                 model_args["nseasons"] = None # remove seasonal components from model
 
             # Causal impact analysis

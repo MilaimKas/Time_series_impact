@@ -152,8 +152,7 @@ class TSA:
 
         # default parameters
         if seasonal is None:
-            smooth_default = 1+len(self.data)//5 if (len(self.data)//5)%2 == 0 else (len(self.data)//5)
-            seasonal = max(smooth_default, 3)
+            seasonal = seasonal_default(len(self.df))
 
         # autocorrelation
         # ------------------------------------------------------------------------------
