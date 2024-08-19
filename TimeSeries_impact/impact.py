@@ -10,7 +10,6 @@ from causalimpact import CausalImpact
 from tqdm import trange
 
 
-
 class SimImpact:
 
     """

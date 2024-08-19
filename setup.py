@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='TimeSeries_impact',
-      version='0.1',
+      version='0.2',
       description='Set of functions for advanced time series analysis and causal impact simulations',
       url='',
       author='Milaim Kas',
