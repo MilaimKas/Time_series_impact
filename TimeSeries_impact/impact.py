@@ -9,13 +9,14 @@ from causalimpact import CausalImpact
 
 from tqdm import trange
 
-# wrapper around the "good" BST causalimpact package
 
 
 class SimImpact:
 
     """
-        Class for performing some simulation (aka power analysis) on time series
+        Class for performing some simulation (aka power analysis) on time series.
+        This calls the deprecated version of causal impact because it uses maximum likelihood estimation instead of pure posterior Bayesian. 
+        Hence the calculation is faster, which is needed for the 
     """
 
     def __init__(self, df):
