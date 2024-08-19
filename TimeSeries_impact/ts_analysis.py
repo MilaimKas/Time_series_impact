@@ -32,13 +32,26 @@ high_contrast_colors = [
 
 
 def fill_data(df, inplace=True, plot=False, 
-                    level=True, trend=True, seasonal=None, period=7,
-                    stochastic_level=True, stochastic_trend=True, stochastic_seasonal=True):
+                    level=True, trend=False, seasonal=7,
+                    stochastic_level=True, stochastic_trend=False, stochastic_seasonal=True):
     """
-    fill in missing data on a target variable when giving regressor with all data
+        fill in missing data on a target variable when giving regressor with all data
+
 
     Args:
-        df (pd.DataFrame): first column must be target all other regressors. Index must be dates.
+        df (pd.DataFrame): first column is the target, other are regressors. 
+                            The target columns mus contain nan values that need to be filled
+        inplace (bool, optional): change value inplace. Defaults to True.
+        plot (bool, optional): plot the original and new data. Defaults to False.
+        level (bool, optional): level component. Defaults to True.
+        trend (bool, optional): trend component. Defaults to False.
+        seasonal (int, optional): seasonal period. Defaults to 7.
+        stochastic_level (bool, optional): stochastic level component. Defaults to True.
+        stochastic_trend (bool, optional): stochastic trend component. Defaults to False.
+        stochastic_seasonal (bool, optional): stochastic seasonal component. Defaults to True.
+
+    Returns:
+        pd.Series: target data with filled values
     """
 
     # Split data into target and regressors
@@ -56,8 +69,9 @@ def fill_data(df, inplace=True, plot=False,
 
     # Define and fit the UC model
     model = UnobservedComponents(target_train, exog=regressors_train, 
-                    level=level, trend=trend, seasonal=seasonal, period=period,
-                    stochastic_level=stochastic_level, stochastic_trend=stochastic_trend, stochastic_seasonal=stochastic_seasonal)
+                    level=level, trend=trend, seasonal=seasonal,
+                    stochastic_level=stochastic_level, stochastic_trend=stochastic_trend, 
+                    stochastic_seasonal=stochastic_seasonal)
     result = model.fit(disp=False)
 
     # Forecast the missing values using the trained model
@@ -147,12 +161,18 @@ class TSA:
 
     def decompose(self, period=7, trend=None, seasonal=None):
         """
-        perform seasonal analysis and decomposition
+                perform seasonal analysis and decomposition
+
+
+        Args:
+            period (int, optional): seasonal period. Defaults to 7 (weekly periodicity).
+            trend (int, optional): trend window smoothing. Defaults to None.
+            seasonal (int, optional): seasonal window smoothing. Defaults to None -> len(df)//5
         """
 
-        # default parameters
+        # default parameters for seasonal window
         if seasonal is None:
-            seasonal = seasonal_default(len(self.df))
+            seasonal = seasonal_default(len(self.data))
 
         # autocorrelation
         # ------------------------------------------------------------------------------

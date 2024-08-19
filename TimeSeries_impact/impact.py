@@ -61,6 +61,7 @@ class SimImpact:
             plt.figure: main plot with the results
         """
 
+        # default value for the seasonal smoothing
         if decompose_kwars["seasonal"] is None:
             decompose_kwars["seasonal"] = utilities.seasonal_default(len(self.target))
 
