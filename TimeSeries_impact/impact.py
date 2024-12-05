@@ -9,6 +9,8 @@ from causalimpact import CausalImpact
 
 from tqdm import trange
 
+# TODO: performing the decomposition after adding the effect on the raw data leads to strong discrpency between estimate effect size and real effect size, especially for large effect size and large trend window size.
+# maybe add effect on tren data
 
 class SimImpact:
 
@@ -41,9 +43,9 @@ class SimImpact:
         self.relup = None
 
     def make_sim(self, relup_list, test_size, 
-                        model_args={"nseasons":7}, 
+                        model_kwargs={"nseasons":7}, 
                         add_effect_args={"scale_std":0.05, "log_len":0},
-                        on_trend=False, decompose_kwars={"period":7, "seasonal":None, "trend":None}):
+                        on_trend=False, decompose_kwargs={"period":7, "seasonal":None, "trend":None}):
         """
         This function performs a simulation following these steps:
             - choose a test size (post perdiod size)
@@ -61,8 +63,8 @@ class SimImpact:
         """
 
         # default value for the seasonal smoothing
-        if decompose_kwars["seasonal"] is None:
-            decompose_kwars["seasonal"] = utilities.seasonal_default(len(self.target))
+        if decompose_kwargs["seasonal"] is None:
+            decompose_kwargs["seasonal"] = utilities.seasonal_default(len(self.target))
 
         # store given test size in class value
         self.test_size = test_size
@@ -85,13 +87,13 @@ class SimImpact:
             
             # decompose TS
             if on_trend:
-                data, _, _ = utilities.decompose_components(data, **decompose_kwars)
-                model_args["nseasons"] = None # remove seasonal components from model
+                data, _, _ = utilities.decompose_components(data, **decompose_kwargs)
+                model_kwargs["nseasons"] = None # remove seasonal components from model
 
             # Causal impact analysis
             pre_period = [data.index[0], data.index[-1-test_size]]
             post_period = [data.index[-test_size], data.index[-1]]
-            ci = dep_CausalImpact(data, pre_period, post_period, model_args=model_args)
+            ci = dep_CausalImpact(data, pre_period, post_period, model_args=model_kwargs)
             ci.run()
             ci.summary()
 
@@ -196,7 +198,8 @@ class SimImpact:
                     post_per_length_max=30, post_per_length_min=4, min_training_len=None, N_training=5, 
                     model_args={"nseasons":7}, 
                     add_effect_args={"scale_std":0.05, "log_len":0},
-                    on_trend=False, **decompose_kwargs):
+                    on_trend=False,agg_pval=np.mean,
+                    **decompose_kwargs):
         """
         This function performs more involved simulation to "mimic" a standard power analysis within the time serie framework.
         Through the following steps:
@@ -272,14 +275,13 @@ class SimImpact:
                 ci_width_tmp = np.zeros_like(pval_tmp)
 
                 # loop over pre-period length (intervention date)
-                k = 0
-                for pre_period_len in training_size_list:
+                for k in range(len(training_size_list)):
 
-                    controls = self.controls[:pre_period_len+1+post_period_len]
-                    target = self.target[:pre_period_len+1+post_period_len]
+                    controls = self.controls[:training_size_list[k]+1+post_period_len]
+                    target = self.target[:training_size_list[k]+1+post_period_len]
 
                     # calculate absolute uplift from post period 
-                    up = relup*np.mean(target[pre_period_len+1:])
+                    up = relup*np.mean(target[training_size_list[k]+1:])
 
                     # add uplift with randomness to target
                     obs = utilities.add_effect(target, up, post_period_len+1, **add_effect_args)
@@ -291,8 +293,8 @@ class SimImpact:
                         data, _, _ = utilities.decompose_components(data, **decompose_kwargs)
                         model_args["nseasons"] = None # remove seasonal components from model
 
-                    pre_period = [data.index[0], data.index[pre_period_len]]
-                    post_period = [data.index[pre_period_len+1], data.index[-1]]
+                    pre_period = [data.index[0], data.index[training_size_list[k]]]
+                    post_period = [data.index[training_size_list[k]+1], data.index[-1]]
 
                     ci = dep_CausalImpact(data, pre_period, post_period, model_args=model_args)
                     ci.run()
@@ -300,22 +302,22 @@ class SimImpact:
                     res = utilities.store_ci(ci)
 
                     # interval from model -> abs CI width
-                    ci_width_tmp[k] = abs(ci.inferences.point_effect_lower.values[-1] - \
-                                        ci.inferences.point_effect_upper.values[-1])
+                    ci_width_tmp[k] = abs(res.rel_l - res.rel_u)
+                                        #abs(ci.inferences.point_effect_lower.values[-1]/post_period_len - \
+                                      #  ci.inferences.point_effect_upper.values[-1]/post_period_len)
 
                     # rolling average
-                    roll_avg_tmp[k] = utilities.rolling_average(ci.inferences.point_effect.values[-post_period_len:])[-1]
+                    roll_avg_tmp[k] = res.rel #utilities.rolling_average(ci.inferences.point_effect.values[-post_period_len:])[-1]
 
                     # pval
-                    pval_tmp[k] = float(ci.summary_df.loc["P-value", "Average"][:-1])
+                    pval_tmp[k] = res.pval
 
-                    k += 1
                 
-                # take mean out of all simulations
+                # take mean out of all simulations (on intervention date)
                 ci_width[i, j] = np.mean(ci_width_tmp)
                 roll_avg[i,j] = np.mean(roll_avg_tmp)
-                signi[i,j] = (roll_avg[i,j]+ci_width[i,j]/2 <= 0)
-                pval[i,j] = np.max(pval_tmp) # does not make a lot of sense to take the mean of p_values ?
+                signi[i,j] = (roll_avg[i,j]-ci_width[i,j]/2 <= 0) if roll_avg[i,j] > 0 else (roll_avg[i,j]+ci_width[i,j]/2 <= 0)
+                pval[i,j] = agg_pval(pval_tmp) 
 
                 ci_obj_tmp.append(ci)
 
