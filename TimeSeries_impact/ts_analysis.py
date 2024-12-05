@@ -9,12 +9,16 @@ from statsmodels.tsa.stattools import acf, pacf
 from statsmodels.tsa.statespace.structural import UnobservedComponents
 
 from scipy.optimize import minimize
+from scipy.optimize import differential_evolution
 
 from TimeSeries_impact.utilities import *
 from TimeSeries_impact import plot_functions
 
 import matplotlib.pyplot as plt
 import seaborn as sns
+
+from dtaidistance import dtw
+
 
 
 high_contrast_colors = [
@@ -117,7 +121,7 @@ class TSA:
 
         self.component = {}
 
-    def plot(self, max_xticks=20):
+    def plot(self, max_xticks=20, **decompose_kwargs):
         """
         Plot scaled values with trend components as time series
 
@@ -126,7 +130,7 @@ class TSA:
         """
 
         if not self.component:
-            self.decompose()  
+            self.decompose(**decompose_kwargs)  
 
         # scaled data and trend components
         fig = plt.figure()
@@ -159,7 +163,7 @@ class TSA:
 
         return fig
 
-    def decompose(self, period=7, trend=None, seasonal=None):
+    def decompose(self, **decompose_kwargs):
         """
                 perform seasonal analysis and decomposition
 
@@ -170,9 +174,14 @@ class TSA:
             seasonal (int, optional): seasonal window smoothing. Defaults to None -> len(df)//5
         """
 
-        # default parameters for seasonal window
-        if seasonal is None:
+        # default parameters
+        if "seasonal" not in decompose_kwargs.keys():
             seasonal = seasonal_default(len(self.data))
+        else:
+            seasonal = decompose_kwargs["seasonal"]
+        decompose_kwargs["seasonal"] = seasonal
+        if "period" not in decompose_kwargs.keys():
+            decompose_kwargs["period"] = 7
 
         # autocorrelation
         # ------------------------------------------------------------------------------
@@ -189,8 +198,9 @@ class TSA:
             # Identify lags where the ACF values exceed the upper confidence limit
             significant_lags = np.where(acorr > confint_zero_centered[:, 1])[0]
 
-            if period not in significant_lags:
-                print(f"WARNING: for {c}, no seasonality of period {period} was detected at 5% significance")
+            if "period" in decompose_kwargs.keys():
+                if decompose_kwargs["period"] not in significant_lags:
+                    print(f"WARNING: for {c}, no seasonality of period {decompose_kwargs['period']} was detected at 5% significance")
 
         # add legend
         ax_acf.legend(self.columns)
@@ -203,19 +213,18 @@ class TSA:
 
         # decomposition
         # ------------------------------------------------------------------------------
-
-        decompose_kwars = {"seasonal":seasonal, "trend":trend, "period":period}
-        trend, seas, resid = decompose_components(self.data, **decompose_kwars)
+        
+        trend, seas, resid = decompose_components(self.data, **decompose_kwargs)
         # store as class attribute
         self.component.update({"trend":trend, "seas":seas, "resid":resid})
 
     
-    def analyze(self, alpha=0.2, period=7):
+    def analyze(self, period=7):
         """
         analyse components of target and controls and asses if similar
         """
 
-        # residuals -> normal similarity metric and kolmogorov test 
+        # residuals -> normal similarity metric (different score based on normal assumption) 
         res_res = pd.DataFrame()
         for c in self.columns[1:]:
             target_scaled = scale_minmax(self.component["resid"].iloc[:,0])
@@ -223,61 +232,119 @@ class TSA:
             metrics = normal_similarity_metrics(target_scaled, control_scaled)
             res_res[c] = metrics.transpose()
         
-        # seasonal -> remove sinusoidal -> simple linear correlation on residuals
+        # seasonal -> DTW coefficient
         res_seas = pd.DataFrame()
-        t = np.arange(1, len(self.data)+1)
-        target_seas_res = self.component["seas"].iloc[:,0] -  self.component["seas"].iloc[:,0].mean() * np.sin(2 * np.pi * t / period)
+        target_seas_res = self.component["seas"].iloc[:,0]
         for c in self.columns[1:]:
-            control_seas_resid = self.component["seas"][c] - self.component["seas"][c].mean() * np.sin(2 * np.pi * t / period)
-            res_seas[c] = [np.corrcoef(target_seas_res, control_seas_resid)[0,1]]
+            control_seas_resid = self.component["seas"][c]
+            res_seas[c] = [dtw.distance(target_seas_res, control_seas_resid)/len(target_seas_res)]
 
         return res_res, res_seas
     
-    def optimize_decomposition(self, period=7):
+    def optimize_decomposition(self, period=7, seas_weight=1):
+        """
+        This function finds the set of trend window and seasonal window that 
+        maximizes the similarity between the residuals and seasonal components of the 
+        target and the sum of control time series.
+
+        Args:
+            period (int, optional): period for the decomposition. Defaults to 7 (daily).
+
+        Returns:
+            _type_: _description_
+        """
 
         # Initial parameter values
-        initial_params = [21, 21]  # starting with windows as initial guess for both trend and seasonality
+        initial_params = [50, 20]  # starting with windows as initial guess for both trend and seasonality
         
         # Parameter bounds: [min, max] for seasonal and trend windows
-        bounds = [(5, len(self.data)), (5, len(self.data))]  # example bounds, adjust as needed
+        bounds = [(period+1, len(self.data)), (period+1, len(self.data))]
+
+        # Optimize using differential algorithm (allows to tackle integers)
+        result = differential_evolution(
+            self.similarity_metric, # objectif function
+            bounds,
+            strategy="best1bin",  # integer-based steps
+            disp=True,  # Set to True to display convergence messages
+            args=(period, seas_weight)
+            )
+    
+        # Round final parameters to integers and make sure parameters are odds
+        optimal_seasonal = int(round(result.x[0]))
+        if optimal_seasonal % 2 == 0:
+            optimal_seasonal += 1
+        optimal_trend = int(round(result.x[1]))
+        if optimal_trend % 2 == 0:
+            optimal_trend += 1
+
+        return optimal_seasonal, optimal_trend   # optimal parameters
+
+    def similarity_metric(self, params, period=7, seas_weight=1, resid_metric="Bhattacharyya Distance"):
+        """
+        Function that calculates a similarity score as weighted sum of the residuals and seasonal components
+
+        Args:
+            params (_type_): _description_
+            period (int, optional): _description_. Defaults to 7.
+
+        Returns:
+            _type_: _description_
+        """
         
-        # define objectif function
-        def similarity_metric(params, period=period):
-
-            mean_control = self.controls.mean(axis=1)
-
-            seasonal = int(params[0])
-            trend = int(params[1])
-            
-            # Perform STL decomposition
-            stl_target = STL(self.target, seasonal=seasonal, trend=trend, period=period).fit()
-            stl_control = STL(mean_control, seasonal=seasonal, trend=trend, period=period).fit()
-            
-            # Extract seasonal components
-            target_seasonal = stl_target.seasonal
-            control_seasonal = stl_control.seasonal
-            
-            # Calculate similarity metrics
-            seasonal_similarity = np.corrcoef(target_seasonal, control_seasonal)[0, 1]
-            
-            # Combine similarities (we maximize their sum, hence minimize negative sum)
-            total_similarity = seasonal_similarity #+ residual_similarity
-            return -total_similarity
-
-        # Optimize
-        result = minimize(similarity_metric, initial_params, bounds=bounds, method='L-BFGS-B')
-
-        return result.x  # optimal parameters
+        seasonal, trend = params
+        
+        # Ensure parameters are integers and odd
+        seasonal = int(round(params[0]))
+        if seasonal % 2 == 0:
+            seasonal += 1
+        trend = int(round(params[1]))
+        if trend % 2 == 0:
+            trend += 1
+        
+        # Perform STL decomposition
+        stl_target = STL(self.target, seasonal=seasonal, trend=trend, period=period).fit()
+        stl_control = STL(self.controls.sum(axis=1), seasonal=seasonal, trend=trend, period=period).fit()
+        
+        # Extract seasonal components
+        target_seasonal = stl_target.seasonal
+        control_seasonal = stl_control.seasonal
+        
+        # Extract residualy components
+        target_resid = stl_target.resid
+        control_resid = stl_control.resid
+        
+        # scale components
+        target_seasonal = scale_std(target_seasonal)
+        control_seasonal = scale_std(control_seasonal)
+        target_seasonal = scale_std(target_resid)
+        control_seasonal = scale_std(control_resid)
+        
+        # Calculate similarity metrics for seasonal and residual component
+        seasonal_similarity = dtw.distance(target_seasonal, control_seasonal)/len(target_seasonal) # DTW distance
+        residual_similarity = normal_similarity_metrics(target_resid, control_resid)
+        
+        if resid_metric in residual_similarity.keys():
+            residual_similarity = residual_similarity[resid_metric]
+        else:
+            raise ValueError(f"Similarity metric not recognize, available metrics: {residual_similarity.keys()}")
+        
+        # Give more weight to seasonal components
+        total_similarity = abs(seasonal_similarity + residual_similarity)
+        
+        return total_similarity
     
     def plot_component(self):
+        """
+        Plot the trend, seasonal and residual component of all time series
+        """
 
         if not self.component:
-            self.decompose()  
+            raise ValueError("Not components found, perform decomposition first")
 
         # residuals
         for col, color in zip(self.component["resid"].columns, high_contrast_colors):
-            sns.histplot(scale_minmax(self.component["resid"][col]), label=col, color=color)
-        plt.ylabel("residuals count")
+            sns.histplot(scale_minmax(self.component["resid"][col]), label=col, color=color, stat="density")
+        plt.ylabel("residuals density")
         plt.title("Residual component")
         plt.legend()
         plt.show()
@@ -308,7 +375,7 @@ class TSA:
         Plot autocorrelation and partial autocorrelation fro all data
 
         Returns:
-            _type_: _description_
+             show autocorrelation plot 
         """
 
         if not self.component:
@@ -340,15 +407,25 @@ class TSA:
         return plot_functions.scaled_view(self.data, None)
 
 
-    def correlation(self, df=None, on_trend=False):
+    def correlation(self, df=None, on_trend=False, **decompose_kwargs):
+        """
+        Calculates standard correlation coefficients
+
+        Args:
+            df (pd.DataFrame, optional): df containing data. Defaults to None.
+            on_trend (bool, optional): True if using trend component. Defaults to False.
+
+        Returns:
+            _type_: _description_
+        """
         
         if df is None:
             if on_trend:
                 if not self.component:
-                    self.decompose()
+                    self.decompose(**decompose_kwargs)
                 df = self.component["trend"]
             else:
-                df = self.data
+                df = self.data.copy()
 
         # Calculate Pearson correlation coefficient
         pearson_corr = df.corr(method='pearson')
