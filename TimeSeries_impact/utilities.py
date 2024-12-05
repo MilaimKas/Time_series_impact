@@ -62,6 +62,7 @@ def normal_similarity_metrics(dist1, dist2):
 
     return res
 
+
 def seasonal_default(length):
     """
     Calculate default seasonal window smoothing
@@ -109,7 +110,7 @@ def store_ci(ci):
         class: res with relative and absolute effect values
     """
 
-    pval = float(ci.summary_df.loc["P-value"]["Average"][-2])
+    pval = float(ci.summary_df.loc["P-value"]["Average"][:-1])
 
     rel = float(ci.summary_df.loc["Relative Effect"]["Average"][:-1])
     rel_u = float(ci.summary_df.loc["95% CI"]["Average"][2][0][:-1])
