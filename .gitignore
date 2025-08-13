@@ -2,3 +2,6 @@
 .venv/*
 *cpython*
 *test*
+*info*
+*dist*
+*egg*
