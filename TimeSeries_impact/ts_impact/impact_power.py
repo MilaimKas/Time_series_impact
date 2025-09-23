@@ -14,6 +14,7 @@ class SimImpact:
         self.target.dropna(inplace=True)
         self.controls.dropna(inplace=True)
         self.raw_data = pd.concat([self.target, self.controls], axis=1)
+        self.index = self.raw_data.index
 
         if len(self.target) != len(self.controls):
             raise ValueError("Length of the target and control time series differ after removing nan values. Did you forget to fill in missing values ?")
@@ -24,6 +25,34 @@ class SimImpact:
 
         self.model_para_default = {"level": "local linear trend", "seasonal": 7, "standartized_controls":True}
 
+    def _on_trend(self, data, split_decomposition, pre_period, post_period, 
+                  tsize, up, decompose_kwargs, add_effect_args):
+
+        if split_decomposition:
+            pre = data.loc[pre_period[0]:pre_period[1]]
+            post = data.loc[post_period[0]:post_period[1]]
+            pre_dec = Decomposer(pre)
+            post_dec = Decomposer(post)
+            pre_dec.decompose(**(decompose_kwargs or {}))
+            post_dec.decompose(**(decompose_kwargs or {}))
+            pre_trend = pre_dec.components["trend"]
+            post_trend = post_dec.components["trend"]
+            data = pd.concat([pre_trend, post_trend])
+
+        else:
+            full_dec = Decomposer(data)
+            full_dec.decompose(**(decompose_kwargs or {}))
+            data = full_dec.components["trend"]
+
+        # store true counterfactual
+        data_target_true = data.iloc[:,0]
+
+        # add effect on the post period trend
+        obs = add_effect(data.iloc[:,0], up, tsize, **add_effect_args)
+        data = pd.concat([obs, data.iloc[:,1:]], axis=1)
+
+        return obs, data, data_target_true
+    
     def make_sim(self, relup_list, test_size,
                  model_kwargs=None,
                  add_effect_args=None,
@@ -44,72 +73,41 @@ class SimImpact:
 
         for up, rel in zip(uplift_list, relup_list):
 
+            pre_period = [self.index[0], self.index[-1 - test_size]]
+            post_period = [self.index[-test_size], self.index[-1]]
+
             # simulate on the trend after decomposition
             if on_trend:
                 
                 data = self.raw_data.copy()
-
-                # split decompisition to pre and post period to avoid abrupt break due to intervention
-                if split_decomposition:
-                    
-                    # get trend from pre and post period separately
-                    pre_period = [data.index[0], data.index[-1 - test_size]]
-                    post_period = [data.index[-test_size], data.index[-1]]
-                    pre = data.loc[pre_period[0]:pre_period[1]]
-                    post = data.loc[post_period[0]:post_period[1]]
-                    pre_dec = Decomposer(pre)
-                    post_dec = Decomposer(post)
-                    pre_dec.decompose(**decompose_kwargs)
-                    post_dec.decompose(**decompose_kwargs)
-                    pre_trend = pre_dec.components["trend"]
-                    post_trend = post_dec.components["trend"]
-                    data = pd.concat([pre_trend, post_trend])
-                    
-                    # store true counterfactual
-                    data_target_true = data.iloc[:,0]
-
-                    # add effect on the post period trend
-                    obs = add_effect(data.iloc[:,0], up, test_size, **add_effect_args)
-                    # add back controls
-                    data = pd.concat([obs, data.iloc[:,1:]], axis=1)
-
-                # perform decompisition on the entire time series
-                else:
-                    full_dec = Decomposer(data)
-                    full_dec.decompose(**decompose_kwargs)
-                    data = full_dec.components["trend"]
-
-                    # store true counterfactual
-                    data_target_true = data.iloc[:,0]
-
-                    # add effect
-                    obs = add_effect(data.iloc[:,0], up, test_size, **add_effect_args)
-                    data = pd.concat([obs, data.iloc[:,1:]], axis=1)
-                
-                model_kwargs["seasonal"] = None
+                obs, data, data_target_true = self._on_trend(data, split_decomposition, pre_period, post_period,\
+                            test_size, up, decompose_kwargs, add_effect_args)
+                model_kwargs["nseasons"] = None # remove  seasonality in the model
             
             else:
 
                 # store true counterfactual
                 data_target_true = self.target.copy()
-                
                 # add effect
                 obs = add_effect(self.target, up, test_size, **add_effect_args)
                 data = pd.concat([obs, self.controls], axis=1)
             
-            data.index = pd.to_datetime(data.index)
-            pre_period = [data.index[0], data.index[-1 - test_size]]
-            post_period = [data.index[-test_size], data.index[-1]]
-            
-            ci = CausalImpactMLE(data, pre_period, post_period, model_kwargs)
-            ci.run()
+            # check if index are datetime
+            try:
+                data.index = pd.to_datetime(self.index)
+            except:
+                print("Index could not be converted to date, continue with original index")
+                data.index = self.index
+
+            ci = CausalImpactMLE(data, pre_period, post_period)
+            ci.run(model_kwargs=model_kwargs)
 
             inference = ci.get_inference()
 
             # store infos and results
             data["true_target"] = data_target_true
             data["model target"] = inference["pred_mean"]
-            res_tmp = {"chart":ci.plot(), "true_relup":rel, "test_size":test_size, "data":data}
+            res_tmp = {"chart":ci.plot(counterfactual=data_target_true), "true_relup":rel, "test_size":test_size, "data":data}
             res_tmp.update(inference)
             self.res_sim.append(res_tmp)
     
@@ -122,13 +120,13 @@ class SimImpact:
         sim_data = self.res_sim
 
         # make average relarive effect
-        relup_obs = np.array([np.mean(v["abs_rel_effect"]) for v in sim_data])
-        lower_95 = np.array([np.mean(v["ci_95_abs_rel_effect"].iloc[:,0]) for v in sim_data])*100
-        upper_95 = np.array([np.mean(v["ci_95_abs_rel_effect"].iloc[:,1]) for v in sim_data])*100
-        lower_90 = np.array([np.mean(v["ci_90_abs_rel_effect"].iloc[:,0]) for v in sim_data])*100
-        upper_90 = np.array([np.mean(v["ci_90_abs_rel_effect"].iloc[:,1]) for v in sim_data])*100
-        lower_80 = np.array([np.mean(v["ci_80_abs_rel_effect"].iloc[:,0]) for v in sim_data])*100
-        upper_80 = np.array([np.mean(v["ci_80_abs_rel_effect"].iloc[:,1]) for v in sim_data])*100
+        relup_obs = np.array([np.mean(v["abs_rel_effect"]) for v in sim_data])*100
+        lower_95 = np.array([np.mean(v["ci_95_abs_rel_effect"][:,0]) for v in sim_data])*100
+        upper_95 = np.array([np.mean(v["ci_95_abs_rel_effect"][:,1]) for v in sim_data])*100
+        lower_90 = np.array([np.mean(v["ci_90_abs_rel_effect"][:,0]) for v in sim_data])*100
+        upper_90 = np.array([np.mean(v["ci_90_abs_rel_effect"][:,1]) for v in sim_data])*100
+        lower_80 = np.array([np.mean(v["ci_80_abs_rel_effect"][:,0]) for v in sim_data])*100
+        upper_80 = np.array([np.mean(v["ci_80_abs_rel_effect"][:,1]) for v in sim_data])*100
 
         fig = plt.figure()
         plt.plot(true_relup, relup_obs, 'o-', label="Estimated rel. effect")
@@ -154,8 +152,8 @@ class SimImpact:
         sim_data = self.res_sim
         relup = np.array([sim["true_relup"] for sim in sim_data])
         cum_effect = [v["cum_effect"] for v in sim_data]
-        cum_upper = [v["ci_95_cum_abs_effect"].iloc[:, 1] for v in sim_data]
-        cum_lower = [v["ci_95_cum_abs_effect"].iloc[:, 0] for v in sim_data]
+        cum_upper = [v["ci_95_cum_abs_effect"][:, 1] for v in sim_data]
+        cum_lower = [v["ci_95_cum_abs_effect"][:, 0] for v in sim_data]
 
         fig = plt.figure()
         colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
@@ -175,7 +173,7 @@ class SimImpact:
 
         return fig
 
-    def power_analyse(self, relup_list=None, test_sizes=None, threshold=0.05,
+    def power_analyse(self, relup_list=None, test_sizes=None,
                       model_kwargs=None, add_effect_args=None,
                       on_trend=False, decompose_kwargs=None, split_decomposition=False,
                       n_rollouts=10, min_pre=30):
@@ -211,50 +209,41 @@ class SimImpact:
                     sub_controls = self.controls.iloc[:idx_end,:].copy()
 
                     up = rel * np.mean(sub_target[-tsize:])
-                    obs = add_effect(sub_target, up, tsize, **add_effect_args)
-                    data = pd.concat([obs, sub_controls], axis=1)
-                    data.index = pd.to_datetime(data.index)
 
-                    pre_period = [data.index[0], data.index[-1 - tsize]]
-                    post_period = [data.index[-tsize], data.index[-1]]
+                    pre_period = [self.index[0], self.index[-1 - tsize]]
+                    post_period = [self.index[-tsize], self.index[-1]]
 
                     if on_trend:
-                        if split_decomposition:
-                            pre = data.loc[pre_period[0]:pre_period[1]]
-                            post = data.loc[post_period[0]:post_period[1]]
-                            pre_dec = Decomposer(pre)
-                            post_dec = Decomposer(post)
-                            pre_dec.decompose(**(decompose_kwargs or {}))
-                            post_dec.decompose(**(decompose_kwargs or {}))
-                            pre_trend = pre_dec.components["trend"]
-                            post_trend = post_dec.components["trend"]
-                            data = pd.concat([pre_trend, post_trend])
-                        else:
-                            full_dec = Decomposer(data)
-                            full_dec.decompose(**(decompose_kwargs or {}))
-                            data = full_dec.components["trend"]
-                        model_kwargs["nseasons"] = None
 
-                    ci = CausalImpactMLE(data, pre_period, post_period, model_kwargs)
-                    ci.run()
+                        data = self.raw_data.copy()
+                        obs, data, data_target_true = self._on_trend(data, split_decomposition, pre_period, post_period,\
+                                    tsize, up, decompose_kwargs, add_effect_args)
+                        model_kwargs["nseasons"] = None # remove  seasonality in the model
 
-                    try:
-                        ci.run()
-                        inf = ci.get_inference()
-                        ci_bounds = inf["ci_95_cum_abs_effect"]
-                        ci_l = ci_bounds.iloc[-1, 0]
-                        ci_u = ci_bounds.iloc[-1, 1]
-                        if (ci_l > 0 or ci_u < 0):
-                            power_count_p05 += 1
-                        ci_bounds = inf["ci_80_cum_abs_effect"]
-                        ci_l = ci_bounds.iloc[-1, 0]
-                        ci_u = ci_bounds.iloc[-1, 1]
-                        if (ci_l > 0 or ci_u < 0):
-                            power_count_p20 += 1
-                        est = ci.get_inference()["cum_effect"][-1]
+                    else:
 
-                    except Exception:
-                        continue
+                        # store true counterfactual
+                        data_target_true = self.target.copy()
+                        # add effect
+                        obs = add_effect(self.target, up, tsize, **add_effect_args)
+                        data = pd.concat([obs, self.controls], axis=1)
+
+                    ci = CausalImpactMLE(data, pre_period, post_period)
+                    ci.run(model_kwargs=model_kwargs)
+                    inf = ci.get_inference()
+                    
+                    ci_bounds = inf["ci_95_cum_abs_effect"]
+                    ci_l = ci_bounds[-1, 0]
+                    ci_u = ci_bounds[-1, 1]
+                    if (ci_l > 0 or ci_u < 0):
+                        power_count_p05 += 1
+                    ci_bounds = inf["ci_80_cum_abs_effect"]
+                    ci_l = ci_bounds[-1, 0]
+                    ci_u = ci_bounds[-1, 1]
+                    if (ci_l > 0 or ci_u < 0):
+                        power_count_p20 += 1
+                    est = ci.get_inference()["cum_effect"][-1]
+
 
                 power_matrix_p05[i, j] = power_count_p05 / max(1, len(starts))
                 power_matrix_p20[i, j] = power_count_p20 / max(1, len(starts))
