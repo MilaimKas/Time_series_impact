@@ -2,7 +2,7 @@
 
 ## What is this ?
 
-Set of modules to perform in depth analysis of time series and intervention simulation to assess the power of a model.
+Set of modules to perform in depth analysis of time series and intervention simulation to assess the power of a model using underlying MLE model. Simple causalimpact-like wrapper for statsmodel's MLE  and PyBats. 
 
 ## How to install
 
