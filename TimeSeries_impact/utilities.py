@@ -81,8 +81,9 @@ def add_effect(arr, up, test_size, scale_std=2., log_len=5):
         print("WARNING: it makes little sense to put a log smoothing curve length smaller than 3 timestamps\
                     it will put the effect on the first day of intervention to 0")
     
-    # Generate random uplift
-    N = np.random.normal(loc=up, scale=np.std(arr) * scale_std, size=test_size)
+    # Generate random uplift using std after making the array stationary
+    std_stationary = np.std(arr - pd.Series(arr).rolling(window=7, min_periods=1).mean().values)
+    N = np.random.normal(loc=up, scale=std_stationary * scale_std, size=test_size)
     # Apply logarithmic smoothing
     if log_len > 0:
         log_len = min(log_len, test_size)
