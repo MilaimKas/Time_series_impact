@@ -34,24 +34,20 @@ class PyBatsMixin:
 
     def predict(self):
 
-        # get point estimate of pre period
-        self.pred_pre = None 
+        # get point estimate of pre period -> not possible with PyBats
+        self.pred_pre = np.zeros(self.npre)  #self.model_result[:, :self.npre, 0].mean(axis=0)
         
         # get point predictions
         self.pred_mean = np.mean(self.model_result, axis=0)[0, :]
         self.pred_median = np.median(self.model_result, axis=0)[0, :]
         
         # get credible intervals
-        self.pred_ci_95 = np.percentile(self.model_result, [2.5, 97.5], axis=0)[:, 0, :]
-        self.pred_ci_90 = np.percentile(self.model_result, [5, 95], axis=0)[:, 0, :]
-        self.pred_ci_80 = np.percentile(self.model_result, [10, 90], axis=0)[:, 0, :]
+        self.pred_ci_95 = np.percentile(self.model_result[:, 0, :], [2.5, 97.5], axis=0).T
+        self.pred_ci_90 = np.percentile(self.model_result[:, 0, :], [5, 95], axis=0).T
+        self.pred_ci_80 = np.percentile(self.model_result[:, 0, :], [10, 90], axis=0).T
 
         # model's performance
-        self.model_performance = {
-            "aic": self.model.aic,
-            "bic": self.model.bic,
-            "mae": np.mean(np.abs(self.pred_pre-self.pre_data.iloc[:,0])/len(self.pre_data)) 
-        }
+        self.model_performance = {}
     
     def plot_components(self, plot_kwargs={}):
         pass
