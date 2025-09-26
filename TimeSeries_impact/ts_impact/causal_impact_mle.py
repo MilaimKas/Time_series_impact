@@ -13,7 +13,8 @@ class MLEMixin:
 
     def fit(self, model_kwargs=None):
 
-        self.model_kwargs = model_kwargs or {"level": "local linear trend", "seasonal": 7, "standartized_controls":True}
+        self.model_kwargs = model_kwargs or {"level": "local linear trend", "stochastic_level": True, "stochastic_trend": False, 
+                                             "seasonal": 7, "standartized_controls":True}
 
         if self.model_kwargs.get("standartized_controls", False):
             self.data = self._standardize_controls(self.data, self.pre_period)
@@ -38,7 +39,7 @@ class MLEMixin:
         # get point prediction for post period
         self.k = self.post_data.iloc[:, 1:]
         self.predicted_post = self.model_results.get_forecast(steps=len(self.k), exog=self.post_data.iloc[:, 1:])
-        self.pred_mean = self.predicted_post.predicted_mean
+        self.pred_mean = self.predicted_post.predicted_mean.to_numpy()
 
         # get confidence intervals
         self.pred_ci_95 = self.predicted_post.conf_int(alpha=0.05).to_numpy()
@@ -48,8 +49,7 @@ class MLEMixin:
         # model's performance
         self.model_performance = {
             "aic": self.model_results.aic,
-            "bic": self.model_results.bic,
-            "mae": np.mean(np.abs(self.pred_pre-self.pre_data.iloc[:,0])/len(self.pre_data)) 
+            "bic": self.model_results.bic
         }
 
     def plot_components(self, plot_kwargs={}):
