@@ -33,6 +33,18 @@ class CausalImpactBase:
         self.predict(**predict_kwargs)
         self.get_inference()
 
+        # add performance metrics
+
+        # Drop first observation from pre_data target and predictions
+        pred = self.pred_pre[:]
+        actual = self.pre_data.iloc[:, 0].values
+        delta = pred-actual
+
+        self.model_performance.update({
+            "mae": np.mean(np.abs(delta)),
+            "mse": np.mean((delta)**2),
+            "rmse": np.sqrt(np.mean((delta)**2))})
+
     def summary(self):
 
         actual = self.post_data.iloc[:, 0]
@@ -60,10 +72,10 @@ class CausalImpactBase:
         actual = self.post_data.iloc[:, 0].to_numpy()
 
         def rel_ci(ci):
-            return (actual.reshape(-1, 1) - ci) / (self.pred_mean.to_numpy().reshape(-1, 1) + 1e-10)
+            return ((actual.reshape(-1, 1) - ci) / (self.pred_mean.reshape(-1, 1) + 1e-10))[:, ::-1]
 
         def abs_ci(ci):
-            return actual.reshape(-1, 1) - ci
+            return (actual.reshape(-1, 1) - ci)[:, ::-1]
 
         # point estimate
         self.effect = self.post_data.iloc[:, 0].values - self.pred_mean
@@ -148,3 +160,6 @@ class CausalImpactBase:
         plt.tight_layout()
         plt.close()
         return fig
+    
+    def get_model_performance(self):
+        return self.model_performance
