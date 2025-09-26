@@ -106,7 +106,6 @@ class SimImpact:
 
             # store infos and results
             data["true_target"] = data_target_true
-            data["model target"] = inference["pred_mean"]
             res_tmp = {"chart":ci.plot(counterfactual=data_target_true), "true_relup":rel, "test_size":test_size, "data":data}
             res_tmp.update(inference)
             self.res_sim.append(res_tmp)
@@ -232,18 +231,17 @@ class SimImpact:
                     ci.run(model_kwargs=model_kwargs)
                     inf = ci.get_inference()
                     
-                    ci_bounds = inf["ci_95_cum_abs_effect"]
+                    ci_bounds = inf["ci_95_abs_effect"]
                     ci_l = ci_bounds[-1, 0]
                     ci_u = ci_bounds[-1, 1]
                     if (ci_l > 0 or ci_u < 0):
                         power_count_p05 += 1
-                    ci_bounds = inf["ci_80_cum_abs_effect"]
+                    ci_bounds = inf["ci_80_abs_effect"]
                     ci_l = ci_bounds[-1, 0]
                     ci_u = ci_bounds[-1, 1]
                     if (ci_l > 0 or ci_u < 0):
                         power_count_p20 += 1
-                    est = ci.get_inference()["cum_effect"][-1]
-
+                    est = ci.get_inference()["abs_effect"][-1]
 
                 power_matrix_p05[i, j] = power_count_p05 / max(1, len(starts))
                 power_matrix_p20[i, j] = power_count_p20 / max(1, len(starts))
