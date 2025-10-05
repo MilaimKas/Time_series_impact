@@ -15,20 +15,20 @@ class PyBatsMixin:
 
         self.model_kwargs = model_kwargs or {
             "seasPeriods": [7], "family": "normal", "prior_length": 12,
-            "ntrend": 2, "deltrend": 0.99, "nsamps": 5000
+            "ntrend": 2, "deltrend": 0.99, "nsamps": 5000, "seasHarmComponents":[[1]]
         }
 
         if k is None:
             k = len(self.post_data)
         self.k = k
 
-        self.model, self.model_result = analysis(
+        self.model, self.model_result, self.model_coef = analysis(
             Y=self.pre_data.iloc[:, 0].values,
             X=self.data.iloc[:, 1:].values,
             k=self.k,
             forecast_start=self.post_period[0],
             forecast_end=self.post_period[1],
-            dates=self.dates,
+            dates=self.dates, ret=['model', 'forecast', 'model_coef'],
             **self.model_kwargs
         )
 
@@ -51,6 +51,40 @@ class PyBatsMixin:
     
     def plot_components(self, plot_kwargs={}):
         pass
+
+    def get_model_coeff(self):
+        """
+        PyBats returns a dictionary with the following keys
+        "m" → Posterior Mean of the Regression Coefficients
+            A vector of shape (p,) where p is the number of predictors.
+            interpret m as the "expected" regression coefficient at that time step.
+
+        "C" → Posterior Covariance Matrix of the Coefficients
+            A matrix of shape (p, p) for each time step.
+            Represents the uncertainty (variance and correlation) in the β estimates.
+            The diagonal elements are the variances of each coefficient.
+
+        "n" → Posterior Degrees of Freedom
+            Scalar. Relates to the uncertainty in the residual variance (σ²).
+            Comes from the inverse gamma prior on the variance.
+
+        "s" → Posterior Scale Parameter for the Variance
+            Scalar. Posterior estimate of the residual sum of squares, used with n to define the posterior over σ².
+        """
+
+        # take only point estimate for the coefficients
+        coeff = self.model_coef["m"]
+
+        # make a dictionary with keys with the model's parameter names
+        
+        # get indices for the parameters
+        trend_idx = self.model.itrend
+        seas_idx = self.model.iseas
+        reg_idx = self.model.iregn
+
+        return {"trend": coeff[trend_idx],
+                "seasonal": coeff[seas_idx],
+                "regression": coeff[reg_idx]}
 
 class CausalImpactBayes(CausalImpactBase, PyBatsMixin):
     def __init__(self, data, pre_period, post_period):

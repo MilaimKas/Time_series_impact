@@ -76,6 +76,18 @@ class MLEMixin:
 
     def _unstandardize_controls(self):
         return self.controls_scaled * self.control_stds + self.control.means
+    
+    def get_model_coeff(self):
+        if not self.model_results:
+            raise ValueError("Model not yet fitted. Run fit() first")
+        
+        coeff = self.model_results.params
+        if self.model_kwargs.get("standartized_controls", False):
+            # unstandardize control coefficients
+            for i in range(1, len(coeff)):
+                coeff[i] = coeff[i] / self.control_stds[i-1]
+        
+        return coeff
 
 
 class CausalImpactMLE(CausalImpactBase, MLEMixin):
