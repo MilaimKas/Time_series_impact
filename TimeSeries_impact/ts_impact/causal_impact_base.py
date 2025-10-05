@@ -163,3 +163,6 @@ class CausalImpactBase:
     
     def get_model_performance(self):
         return self.model_performance
+    
+    def get_model_params(self):
+        return self.get_model_coeff()
