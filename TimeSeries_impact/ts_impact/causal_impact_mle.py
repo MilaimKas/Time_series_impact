@@ -23,15 +23,10 @@ class MLEMixin:
             model_default = yaml.safe_load(file)        
         self.model_kwargs = model_kwargs or model_default["MLE"]
 
-        if self.model_kwargs.get("standartized_controls", False):
-            self.data = self._standardize_controls(self.data, self.pre_period)
-        
-        self.mle_kwargs = {k: v for k, v in self.model_kwargs.items() if k != "standartized_controls"}
-
         target = self.pre_data.iloc[:, 0]
         exog = self.pre_data.iloc[:, 1:]
 
-        self.model = UnobservedComponents(endog=target, exog=exog, **self.mle_kwargs)
+        self.model = UnobservedComponents(endog=target, exog=exog, **self.model_kwargs)
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", SparseEfficiencyWarning) # silence sparse matrix warnings
@@ -106,6 +101,6 @@ class MLEMixin:
 
 
 class CausalImpactMLE(CausalImpactBase, MLEMixin):
-    def __init__(self, data, pre_period, post_period):
-        CausalImpactBase.__init__(self, data, pre_period, post_period)
+    def __init__(self, data, pre_period, post_period, standardize_controls=False):
+        CausalImpactBase.__init__(self, data, pre_period, post_period, standardize_controls=standardize_controls)
         MLEMixin.__init__(self)

@@ -5,9 +5,14 @@ import matplotlib.pyplot as plt
 
 class CausalImpactBase:
 
-    def __init__(self, data, pre_period, post_period):
+    def __init__(self, data, pre_period, post_period, standardize_controls):
 
-        self.data = data
+        if standardize_controls:
+            self.data = self._standardize_controls(data, pre_period)
+        else:
+            self.data = data
+        self.standardize_controls = standardize_controls
+
         self.pre_period = pre_period
         self.post_period = post_period
         self.dates = data.index
@@ -29,6 +34,7 @@ class CausalImpactBase:
             raise ValueError("Different Nan detected in target and controls. Fill missing values first")
 
     def run(self, model_kwargs={}, predict_kwargs={}):
+
         self.fit(model_kwargs=model_kwargs)
         self.predict(**predict_kwargs)
         self.get_inference()
@@ -177,3 +183,19 @@ class CausalImpactBase:
     
     def get_model_params(self):
         return self.get_model_coeff()
+
+    def _standardize_controls(self, data, pre_period):
+
+        df_pre =  data.loc[pre_period[0]:pre_period[1]]
+        
+        self.control_means = df_pre.iloc[:, 1:].mean()
+        self.control_stds = df_pre.iloc[:, 1:].std(ddof=0).replace(0, 1)
+
+        controls_scaled = (data.iloc[:, 1:] - self.control_means) / self.control_stds
+        
+        data_scaled = pd.concat([data.iloc[:, 0], controls_scaled], axis=1)
+        
+        return data_scaled
+
+    def _unstandardize_controls(self):
+        return self.controls_scaled * self.control_stds + self.control.means

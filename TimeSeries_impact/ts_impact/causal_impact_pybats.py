@@ -89,8 +89,8 @@ class PyBatsMixin:
                 "regression": coeff[:, reg_idx]}
 
 class CausalImpactBayes(CausalImpactBase, PyBatsMixin):
-    def __init__(self, data, pre_period, post_period):
-        CausalImpactBase.__init__(self, data, pre_period, post_period)
+    def __init__(self, data, pre_period, post_period, standardize_controls=False):
+        CausalImpactBase.__init__(self, data, pre_period, post_period, standardize_controls=standardize_controls)
         PyBatsMixin.__init__(self)
 
 

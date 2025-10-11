@@ -6,7 +6,6 @@ MLE:
   stochastic_level: True
   stochastic_trend: True
   stochastic_seasonal: True
-  standartized_controls: True
 pybats:
   seasPeriods: [7]
   family: "normal"
