@@ -114,7 +114,9 @@ class CausalImpactBase:
 
         return self.df_results
 
-    def plot(self,counterfactual=None):
+    def plot(self,counterfactual=None,
+             xrange=None,
+             yrange=None):
 
         dates = self.dates
 
@@ -156,6 +158,15 @@ class CausalImpactBase:
         axes[2].set_xlabel("Date")
         axes[2].legend()
 
+        # set x and y ranges if provided
+        if  xrange is not None:
+            axes[0].set_xlim(xrange)
+            axes[1].set_xlim(xrange)
+            axes[2].set_xlim(xrange)
+        if yrange is not None:
+            axes[0].set_ylim(yrange)
+            axes[1].set_ylim(yrange)
+            axes[2].set_ylim(yrange)
 
         plt.tight_layout()
         plt.close()
