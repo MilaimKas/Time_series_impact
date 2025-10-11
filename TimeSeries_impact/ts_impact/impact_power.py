@@ -5,10 +5,12 @@ import matplotlib.pyplot as plt
 from TimeSeries_impact.ts_impact.causal_impact_mle import CausalImpactMLE
 from TimeSeries_impact.utilities import add_effect, seasonal_default
 from TimeSeries_impact.ts_analysis.ts_decomposition import Decomposer
+import yaml
 
 
 class SimImpact:
-    def __init__(self, df):
+    def __init__(self, df, backend="MLE"):
+
         self.target = df.iloc[:, 0]
         self.controls = df.iloc[:, 1:]
         self.target.dropna(inplace=True)
@@ -23,7 +25,13 @@ class SimImpact:
         self.res_power = {}
         self.test_size = None
 
-        self.model_para_default = {"level": "local linear trend", "seasonal": 7, "standartized_controls":True}
+        # read config yaml
+        with open("TimeSeries_impact/ts_impact/model_config.yaml", 'r') as file:
+            model_config = yaml.safe_load(file)
+
+        if backend not in model_config.keys():
+            raise ValueError(f"Backend {backend} not recognized, available models are {list(model_config.keys())}")
+        self.model_para_default = model_config[backend]
 
     def _on_trend(self, data, split_decomposition, pre_period, post_period, 
                   tsize, up, decompose_kwargs, add_effect_args):
