@@ -2,7 +2,12 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+
 from statsmodels.tsa.statespace.structural import UnobservedComponents
+import warnings
+from scipy.sparse import SparseEfficiencyWarning
+
+import yaml
 
 from TimeSeries_impact.ts_impact.causal_impact_base import CausalImpactBase
 
@@ -13,17 +18,24 @@ class MLEMixin:
 
     def fit(self, model_kwargs=None):
 
-        self.model_kwargs = model_kwargs or {"level": "local linear trend", "stochastic_level": True, "stochastic_trend": False, 
-                                             "seasonal": 7, "standartized_controls":True}
+        # read config yaml
+        with open("TimeSeries_impact/ts_impact/model_config.yaml", 'r') as file:
+            model_default = yaml.safe_load(file)        
+        self.model_kwargs = model_kwargs or model_default["MLE"]
 
         if self.model_kwargs.get("standartized_controls", False):
             self.data = self._standardize_controls(self.data, self.pre_period)
+        
+        self.mle_kwargs = {k: v for k, v in self.model_kwargs.items() if k != "standartized_controls"}
 
         target = self.pre_data.iloc[:, 0]
         exog = self.pre_data.iloc[:, 1:]
 
-        self.model = UnobservedComponents(endog=target, exog=exog, **self.model_kwargs)
-        self.model_results = self.model.fit(disp=False)
+        self.model = UnobservedComponents(endog=target, exog=exog, **self.mle_kwargs)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", SparseEfficiencyWarning) # silence sparse matrix warnings
+            self.model_results = self.model.fit(disp=False)
 
         if not self.model_results.mle_retvals.get("converged", True):
             print(f"Warning: model did not converge. Data length = {len(self.pre_data)}")
@@ -34,7 +46,7 @@ class MLEMixin:
             raise ValueError("Model not yet fitted. Run fit() first")
         
         # get point prediction for pre period
-        self.pred_pre = self.model_results.get_prediction().summary_frame(alpha=0.05)
+        self.pred_pre = self.model_results.get_prediction().predicted_mean.values
 
         # get point prediction for post period
         self.k = self.post_data.iloc[:, 1:]
@@ -84,8 +96,11 @@ class MLEMixin:
         coeff = self.model_results.params
         if self.model_kwargs.get("standartized_controls", False):
             # unstandardize control coefficients
-            for i in range(1, len(coeff)):
-                coeff[i] = coeff[i] / self.control_stds[i-1]
+            ctr_idx = 0
+            for i in range(len(coeff)):
+                if "control" in coeff.index[i]:
+                    coeff[i] = coeff[i] / self.control_stds[ctr_idx]
+                    ctr_idx += 1
         
         return coeff
 

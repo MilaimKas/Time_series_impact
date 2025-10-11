@@ -1,0 +1,17 @@
+
+MLE:
+  level: True
+  trend: True
+  seasonal: 7
+  stochastic_level: True
+  stochastic_trend: True
+  stochastic_seasonal: True
+  standartized_controls: True
+pybats:
+  seasPeriods: [7]
+  family: "normal"
+  prior_length: 12
+  ntrend: 2
+  deltrend: 0.99
+  nsamps: 5000
+  seasHarmComponents: [[1]]

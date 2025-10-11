@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from pybats.define_models import define_dglm
 from pybats.analysis import analysis
 from pybats.point_forecast import median
+import yaml
 
 from TimeSeries_impact.ts_impact.causal_impact_base import CausalImpactBase
 
@@ -12,11 +13,12 @@ class PyBatsMixin:
         pass
 
     def fit(self, model_kwargs=None, k=None):
+        
+        # read config yaml
+        with open("TimeSeries_impact/ts_impact/model_config.yaml", 'r') as file:
+            model_default = yaml.safe_load(file)
 
-        self.model_kwargs = model_kwargs or {
-            "seasPeriods": [7], "family": "normal", "prior_length": 12,
-            "ntrend": 2, "deltrend": 0.99, "nsamps": 5000, "seasHarmComponents":[[1]]
-        }
+        self.model_kwargs = model_kwargs or model_default["pybats"]
 
         if k is None:
             k = len(self.post_data)
@@ -72,7 +74,7 @@ class PyBatsMixin:
             Scalar. Posterior estimate of the residual sum of squares, used with n to define the posterior over σ².
         """
 
-        # take only point estimate for the coefficients
+        # take only point estimate for the coefficients. coeff is an array of shape (n_timesteps, p)
         coeff = self.model_coef["m"]
 
         # make a dictionary with keys with the model's parameter names
@@ -82,9 +84,9 @@ class PyBatsMixin:
         seas_idx = self.model.iseas
         reg_idx = self.model.iregn
 
-        return {"trend": coeff[trend_idx],
-                "seasonal": coeff[seas_idx],
-                "regression": coeff[reg_idx]}
+        return {"trend": coeff[:, trend_idx],
+                "seasonal": coeff[:, seas_idx],
+                "regression": coeff[:, reg_idx]}
 
 class CausalImpactBayes(CausalImpactBase, PyBatsMixin):
     def __init__(self, data, pre_period, post_period):
