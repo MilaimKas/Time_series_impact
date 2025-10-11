@@ -30,3 +30,13 @@ def add_holiday_flags(df, country='US'):
         raise NotImplementedError("Currently only US holidays are implemented")
     df['is_holiday'] = df.index.isin(holidays).astype(int)
     return df
+
+def add_lag_features(df, col, lags):
+    """
+    Add lag features of data in {col} to the dataframe.
+    """
+    print("Warning: only use lag features if there is no data leakage. Anf for forecast length > max(lags)")
+    df = df.copy()
+    for lag in lags:
+        df[f'lag_{col}_{lag}'] = df[col].shift(lag)
+    return df
