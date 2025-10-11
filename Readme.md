@@ -56,9 +56,9 @@ TSA.plot(scaled=True, shifted=True, with_trend=True)()
 TSA.plot()
 TSA.plot_component()
 ```
-![alt text](ts_an_comp_resid.png)
-![alt text](ts_an_comp_trend.png)
-![alt text](ts_an_comp_seas.png)
+![alt text](images/ts_an_comp_resid.png)
+![alt text](images/ts_an_comp_trend.png)
+![alt text](images/ts_an_comp_seas.png)
 
 ```python
 # analyse the similarity of the components
@@ -102,7 +102,7 @@ mle.run()
 # plot results  
 fig_bats = bats.plot()
 ```
-![alt text](ts_imp_pybats.png)
+![alt text](images/ts_imp_pybats.png)
 
 
 ### Perform simulations to asses the power of the model
@@ -117,7 +117,7 @@ impact_class.make_sim(relup_list=relup, test_size=14)
 fig = impact_class.plot_sim_rel()
 display(fig)
 ```
-![alt text](ts_impact_sim.png)
+![alt text](images/ts_impact_sim.png)
 
 ```python
 # power analysis by looping over different pre- and post- period lengths
@@ -125,5 +125,5 @@ _ = impact_class.power_analyse(relup_list=relup)
 fig_power = impact_class.plot_power(alpha=[5,10,20])
 display(fig_power)
 ```
-![alt text](ts_imp_power.png)
+![alt text](images/ts_imp_power.png)
 
