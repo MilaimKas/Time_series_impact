@@ -25,7 +25,7 @@ import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 ```
 
-Example, fake, dataset
+### Example, fake, dataset
 ```python
 
 ts = utilities.make_time_serie(200, freq=[7], nbr_rand_event=5)
@@ -38,19 +38,29 @@ data.plot()
 plt.show()
 ```
 
-Analyse time series and components
+### Analyse time series and components
 ```python
 # create TSA object
 reload(ts_analysis)
 TSA = ts_analysis.TSA(data)
+```
 
+```python
 # check normalized and shifted ts
-TSA.plot_scaled_view()
+TSA.plot(scaled=True, shifted=True, with_trend=True)()
+```
+![alt text](images/ts_an_scaled.png)
 
+```python
 # plot component from decomposition
 TSA.plot()
 TSA.plot_component()
+```
+![alt text](ts_an_comp_resid.png)
+![alt text](ts_an_comp_trend.png)
+![alt text](ts_an_comp_seas.png)
 
+```python
 # analyse the similarity of the components
 print()
 print("Analysis results")
@@ -70,43 +80,50 @@ print("Correlation of the time series")
 print(corr)
 ```
 
-Perform simulations to asses the power of the model
+### Perform causal impact analysis using different underlying models
+```python
+from TimeSeries_impact.ts_impact import causal_impact_pybats, causal_impact_mle
+
+data = synthetic_ts.make_time_series(200)
+
+data_tmp = data["data"]
+test_size = 30
+pre_period = [data_tmp.index[0], data_tmp.index[-1 - test_size]]
+post_period = [data_tmp.index[-test_size], data_tmp.index[-1]]
+
+bats = causal_impact_pybats.CausalImpactBayes(data_tmp, pre_period, post_period)
+bats.run()
+
+mle = causal_impact_mle.CausalImpactMLE(data_tmp, pre_period, post_period)
+mle.run()
+```
+
+```python
+# plot results  
+fig_bats = bats.plot()
+```
+![alt text](ts_imp_pybats.png)
+
+
+### Perform simulations to asses the power of the model
 ```python
 
 # create impact class
-impact_class = impact.SimImpact(data)
+impact_class = impact.SimImpact(data, backend="MLE")
 
 # single simulation
 relup = np.linspace(0.01, 0.2, 10)
 impact_class.make_sim(relup_list=relup, test_size=14)
 fig = impact_class.plot_sim_rel()
 display(fig)
+```
+![alt text](ts_impact_sim.png)
 
-# check single causalimpact results with relup as keys
-print("Keys", impact_class.res_sim.keys())
-impact_class.res_sim['0.0944'][1].plot()
-
+```python
 # power analysis by looping over different pre- and post- period lengths
 _ = impact_class.power_analyse(relup_list=relup)
 fig_power = impact_class.plot_power(alpha=[5,10,20])
 display(fig_power)
 ```
+![alt text](ts_imp_power.png)
 
-
-Perform classic causal impact analysis with the right python package (tfcausalimpact)
-```python
-# perform classic causalimpact with tfcausalimpact
-
-# add effect
-relup = 0.2
-uplift = relup*np.mean(data["target"])
-data["target"] = utilities.add_effect(data["target"], uplift, 50)
-
-pre_period = [0, 149]
-post_period = [150, 199]
-
-ci = impact.CausalImpact(data, pre_period, post_period, model_args={"period":7})
-print(ci.summary())
-print(ci.summary(output='report'))
-ci.plot()
-```
