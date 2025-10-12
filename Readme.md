@@ -86,6 +86,7 @@ from TimeSeries_impact.ts_impact import causal_impact_pybats, causal_impact_mle
 
 data = synthetic_ts.make_time_series(200)
 
+# no intervention
 data_tmp = data["data"]
 test_size = 30
 pre_period = [data_tmp.index[0], data_tmp.index[-1 - test_size]]
