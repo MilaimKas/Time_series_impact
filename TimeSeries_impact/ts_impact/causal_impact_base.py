@@ -33,9 +33,9 @@ class CausalImpactBase:
         if len(self.pre_data.iloc[:, 0].dropna()) != len(self.pre_data.iloc[:, 1:].dropna()):
             raise ValueError("Different Nan detected in target and controls. Fill missing values first")
 
-    def run(self, model_kwargs={}, predict_kwargs={}):
+    def run(self, model_kwargs={}, predict_kwargs={}, extra_kwargs={}):
 
-        self.fit(model_kwargs=model_kwargs)
+        self.fit(model_kwargs=model_kwargs, **extra_kwargs)
         self.predict(**predict_kwargs)
         self.get_inference()
 
