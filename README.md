@@ -13,7 +13,7 @@ Set of modules to perform in depth analysis of time series and intervention simu
 ## How to install
 
 ```
-pip install --extra-index-url=https://rspm.parship.internal/python-repo/latest/simple TimeSeries_impact
+pip install -e .
 ```
 
 ## Example usage
@@ -133,4 +133,5 @@ fig_power = impact_class.plot_power(alpha=[5,10,20])
 display(fig_power)
 ```
 ![alt text](images/ts_imp_power.png)
+
 
